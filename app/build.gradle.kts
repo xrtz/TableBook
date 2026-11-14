@@ -16,11 +16,19 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        val apiUrl = providers.gradleProperty("tableBookApiUrl").orElse("").get()
+        require(apiUrl.isEmpty() || Regex("https://[A-Za-z0-9.-]+(:[0-9]+)?").matches(apiUrl))
+        buildConfigField("String", "API_URL", "\"$apiUrl\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
+        debug {
+            if (!providers.gradleProperty("tableBookApiUrl").isPresent) {
+                buildConfigField("String", "API_URL", "\"http://10.0.2.2:8080\"")
+            }
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
@@ -38,6 +46,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -45,6 +54,8 @@ dependencies {
     implementation(project(":domain:booking"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:${libs.versions.lifecycleRuntimeKtx.get()}")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:${libs.versions.lifecycleRuntimeKtx.get()}")
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

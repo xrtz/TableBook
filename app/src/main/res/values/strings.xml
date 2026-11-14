@@ -1,4 +1,18 @@
 <resources>
     <string name="app_name">TableBook</string>
-    <string name="welcome_message">Hello Android!</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Пароль</string>
+    <string name="auth_password_hint">Не менее 15 символов</string>
+    <string name="auth_login">Войти</string>
+    <string name="auth_register">Создать аккаунт</string>
+    <string name="auth_logout">Выйти</string>
+    <string name="auth_switch_to_login">Уже есть аккаунт? Войти</string>
+    <string name="auth_switch_to_register">Нет аккаунта? Зарегистрироваться</string>
+    <string name="auth_signed_in">Вы вошли в аккаунт</string>
+    <string name="auth_invalid_credentials">Проверьте email и пароль</string>
+    <string name="auth_invalid_registration">Проверьте email и длину пароля</string>
+    <string name="auth_email_taken">Этот email уже зарегистрирован</string>
+    <string name="auth_expired">Сессия истекла. Войдите снова</string>
+    <string name="auth_connection_error">Не удалось выполнить запрос. Попробуйте ещё раз</string>
+    <string name="auth_retry">Повторить</string>
 </resources>
