@@ -52,6 +52,7 @@ android {
 
 dependencies {
     implementation(project(":domain:booking"))
+    implementation(project(":feature:booking"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:${libs.versions.lifecycleRuntimeKtx.get()}")

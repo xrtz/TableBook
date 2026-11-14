@@ -1,0 +1,46 @@
+<resources>
+    <string name="booking_title">TableBook</string>
+    <string name="booking_logout">Выйти</string>
+    <string name="booking_floor">План зала</string>
+    <string name="booking_mine">Мои брони</string>
+    <string name="booking_no_halls">Залы пока недоступны</string>
+    <string name="booking_no_tables">Нет свободных столов на это время и число гостей</string>
+    <string name="booking_available_tables">Свободные столы</string>
+    <string name="booking_refresh">Обновить</string>
+    <string name="booking_fewer">−</string>
+    <string name="booking_more">+</string>
+    <string name="booking_apply">Применить</string>
+    <string name="booking_pick_time">Время визита</string>
+    <string name="booking_table_number">Стол %1$s</string>
+    <string name="booking_table_accessibility">Стол %1$s, %2$s</string>
+    <string name="booking_table_selected">Выбран</string>
+    <string name="booking_table_free">Свободен</string>
+    <string name="booking_table_unavailable">Недоступен</string>
+    <string name="booking_entrance">Вход</string>
+    <string name="booking_reset_zoom">Сбросить масштаб</string>
+    <string name="booking_interval">%1$s–%2$s</string>
+    <string name="booking_success">✓ Стол %1$s забронирован с %2$s до %3$s</string>
+    <string name="booking_confirm">Забронировать на 2 часа</string>
+    <string name="booking_no_reservations">У вас пока нет броней</string>
+    <string name="booking_cancel">Отменить бронь</string>
+    <string name="booking_cancel_question">Отменить эту бронь?</string>
+    <string name="booking_keep">Оставить бронь</string>
+    <string name="booking_invalid_start">Выберите дату и время в будущем</string>
+    <string name="booking_cannot_cancel">Эту бронь уже нельзя отменить</string>
+    <string name="booking_not_found">Запись недоступна</string>
+    <string name="booking_session_expired">Сессия истекла. Войдите снова</string>
+    <string name="booking_connection">Не удалось связаться с сервером. Попробуйте ещё раз</string>
+    <string name="booking_conflict">Этот стол уже заняли. Выберите другой</string>
+    <string name="booking_wrong_capacity">Недостаточно мест</string>
+    <string name="booking_invalid_request">Проверьте параметры брони</string>
+    <string name="booking_status_confirmed">Подтверждена</string>
+    <string name="booking_status_seated">Гости за столом</string>
+    <string name="booking_status_completed">Завершена</string>
+    <string name="booking_status_cancelled">Отменена</string>
+    <plurals name="booking_guests">
+        <item quantity="one">%d гость</item>
+        <item quantity="few">%d гостя</item>
+        <item quantity="many">%d гостей</item>
+        <item quantity="other">%d гостей</item>
+    </plurals>
+</resources>

@@ -22,4 +22,5 @@ dependencyResolutionManagement {
 rootProject.name = "TableBook"
 include(":app")
 include(":domain:booking")
+include(":feature:booking")
  
