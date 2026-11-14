@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">TableBook</string>
+    <string name="welcome_message">Hello Android!</string>
+</resources>
