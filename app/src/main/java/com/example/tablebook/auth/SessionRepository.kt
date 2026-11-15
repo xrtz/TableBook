@@ -8,7 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-internal enum class SessionState { LOADING, SIGNED_OUT, SIGNED_IN }
+enum class SessionState { LOADING, SIGNED_OUT, SIGNED_IN }
 internal data class SessionAccess(val token: String, val generation: Long)
 
 internal class SessionRepository(private val api: AuthApi, private val storage: SessionStorage) {

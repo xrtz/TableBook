@@ -10,7 +10,7 @@ import org.json.JSONObject
 
 internal data class SessionTokens(val accessToken: String, val refreshToken: String)
 
-internal enum class AuthFailure {
+enum class AuthFailure {
     INVALID_CREDENTIALS, INVALID_REGISTRATION, EMAIL_TAKEN, EXPIRED, CONNECTION,
 }
 

@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import com.example.tablebook.R
 
 @Composable
-internal fun AuthScreen(
+fun AuthScreen(
     session: SessionState,
     operation: AuthOperation,
     onSignIn: (String, String, Boolean) -> Unit,

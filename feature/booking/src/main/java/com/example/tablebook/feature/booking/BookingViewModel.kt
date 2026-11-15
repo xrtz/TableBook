@@ -102,7 +102,9 @@ class BookingViewModel(private val repository: GuestBookingRepository) : ViewMod
 
     fun refresh() = load(clearErrors = true)
 
-    private fun load(clearErrors: Boolean) {
+    fun chooseNextTime() = load(clearErrors = true, resetTime = true)
+
+    private fun load(clearErrors: Boolean, resetTime: Boolean = false) {
         readJob?.cancel()
         val snapshot = mutableState.value
         mutableState.update {
@@ -126,12 +128,18 @@ class BookingViewModel(private val repository: GuestBookingRepository) : ViewMod
                         mutableState.update { it.copy(halls = halls, loading = false) }
                         return@launch
                     }
-                    val start = if (snapshot.start == Instant.EPOCH) {
-                        Instant.now().truncatedTo(ChronoUnit.HOURS).plus(1, ChronoUnit.HOURS)
-                    } else snapshot.start
-                    val plan = snapshot.plan ?: repository.floorPlan(hall.id)
+                    val plan = if (resetTime) repository.floorPlan(hall.id)
+                        else snapshot.plan ?: repository.floorPlan(hall.id)
                     ensureActive()
-                    mutableState.update { it.copy(halls = halls, hall = hall, plan = plan, start = start) }
+                    val start = if (resetTime || snapshot.start == Instant.EPOCH) {
+                        plan.serverTime.atZone(hall.zone).truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant()
+                    } else snapshot.start
+                    mutableState.update {
+                        it.copy(
+                            halls = halls, hall = hall, plan = plan, start = start,
+                            selected = if (resetTime) null else it.selected,
+                        )
+                    }
                     val free = repository.availability(hall.id, start, snapshot.guests)
                     ensureActive()
                     mutableState.update { it.copy(available = free, loading = false) }

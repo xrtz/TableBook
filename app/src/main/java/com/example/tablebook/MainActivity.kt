@@ -8,6 +8,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -19,6 +26,8 @@ import com.example.tablebook.auth.SessionRepository
 import com.example.tablebook.auth.SessionState
 import com.example.tablebook.booking.HttpBookingRepository
 import com.example.tablebook.feature.booking.BookingScreen
+import com.example.tablebook.feature.booking.AdminScreen
+import com.example.tablebook.feature.booking.AdminViewModel
 import com.example.tablebook.feature.booking.BookingViewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -32,6 +41,11 @@ class TableBookApplication : Application() {
 }
 
 class MainActivity : ComponentActivity() {
+    private val adminModel by viewModels<AdminViewModel> {
+        viewModelFactory {
+            initializer { AdminViewModel((application as TableBookApplication).booking) }
+        }
+    }
     private val bookingModel by viewModels<BookingViewModel> {
         viewModelFactory {
             initializer { BookingViewModel((application as TableBookApplication).booking) }
@@ -53,12 +67,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             val session by model.session.collectAsStateWithLifecycle()
             val operation by model.operation.collectAsStateWithLifecycle()
+            val admin by adminModel.state.collectAsStateWithLifecycle()
             LaunchedEffect(session) {
-                if (session == SessionState.SIGNED_IN) bookingModel.activate() else bookingModel.reset()
+                if (session == SessionState.SIGNED_IN) adminModel.refresh()
+                else {
+                    adminModel.reset()
+                    bookingModel.reset()
+                }
+            }
+            LaunchedEffect(session, admin.isAdmin) {
+                if (session == SessionState.SIGNED_IN && admin.isAdmin == false) bookingModel.activate()
             }
             TableBookTheme {
                 if (session == SessionState.SIGNED_IN) {
-                    BookingScreen(bookingModel, operation.busy, operation.error != null, model::logout)
+                    when (admin.isAdmin) {
+                        true -> AdminScreen(adminModel, operation.busy, operation.error != null, model::logout)
+                        false -> BookingScreen(bookingModel, operation.busy, operation.error != null, model::logout)
+                        null -> Scaffold { padding ->
+                            Column(Modifier.padding(padding)) {
+                                if (admin.error == null) {
+                                    Text(stringResource(R.string.account_checking))
+                                } else {
+                                    Text(stringResource(R.string.auth_connection_error))
+                                    TextButton(onClick = adminModel::refresh) { Text(stringResource(R.string.auth_retry)) }
+                                }
+                                TextButton(onClick = model::logout, enabled = !operation.busy) {
+                                    Text(stringResource(R.string.auth_logout))
+                                }
+                            }
+                        }
+                    }
                 } else {
                     AuthScreen(session, operation, model::signIn, model::logout, model::restore, model::clearError)
                 }

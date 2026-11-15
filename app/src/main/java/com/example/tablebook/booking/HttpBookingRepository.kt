@@ -2,6 +2,8 @@ package com.example.tablebook.booking
 
 import com.example.tablebook.auth.AuthException
 import com.example.tablebook.auth.SessionRepository
+import com.example.tablebook.domain.booking.AdminBookingRepository
+import com.example.tablebook.domain.booking.AdminReservation
 import com.example.tablebook.domain.booking.BookingDraft
 import com.example.tablebook.domain.booking.BookingError
 import com.example.tablebook.domain.booking.BookingException
@@ -19,6 +21,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +32,34 @@ import org.json.JSONObject
 internal class HttpBookingRepository(
     private val url: String,
     private val sessions: SessionRepository,
-) : GuestBookingRepository {
+) : GuestBookingRepository, AdminBookingRepository {
+    override suspend fun accountIsAdmin(): Boolean = decode {
+        JSONObject(request("/auth/me", authenticated = true).body).getString("role") == "admin"
+    }
+
+    override suspend fun journal(hallId: Long, day: LocalDate, status: ReservationStatus?): List<AdminReservation> = decode {
+        val filter = status?.let { "&status=${it.name.lowercase(Locale.ROOT)}" }.orEmpty()
+        request("/admin/reservations?hallId=$hallId&day=$day$filter", authenticated = true).body.objects().map {
+            AdminReservation(it.reservation(), it.getString("tableLabel"), it.getString("guestEmail"),
+                ReservationStatus.valueOf(it.getString("status").uppercase(Locale.ROOT)))
+        }
+    }
+
+    override suspend fun createForGuest(email: String, draft: BookingDraft, key: String) {
+        val body = JSONObject().put("email", email).put("guestCount", draft.guestCount)
+            .put("tableId", draft.table.id).put("startsAt", draft.startsAt.toString())
+        request("/admin/reservations", body, authenticated = true, key = key)
+    }
+
+    override suspend fun move(id: Long, version: Long, tableId: Long, start: Instant) {
+        val body = JSONObject().put("tableId", tableId).put("startsAt", start.toString()).put("expectedVersion", version)
+        request("/admin/reservations/$id/schedule", body, authenticated = true)
+    }
+
+    override suspend fun changeStatus(id: Long, version: Long, status: ReservationStatus) {
+        val body = JSONObject().put("status", status.name.lowercase(Locale.ROOT)).put("expectedVersion", version)
+        request("/admin/reservations/$id/status", body, authenticated = true)
+    }
     override suspend fun halls(): List<Hall> = decode {
         request("/halls").body.objects().map {
             Hall(it.getLong("id"), it.getString("name"), ZoneId.of(it.getString("timeZone")))
@@ -45,7 +75,7 @@ internal class HttpBookingRepository(
                 it.getInt("x"), it.getInt("y"), it.getInt("size"),
             )
         }
-        FloorPlan(json.getInt("width"), json.getInt("height"), tables)
+        FloorPlan(json.getInt("width"), json.getInt("height"), tables, Instant.parse(json.getString("serverTime")))
     }
 
     override suspend fun availability(hallId: Long, startsAt: Instant, guestCount: Int): Set<Long> = decode {
@@ -70,7 +100,7 @@ internal class HttpBookingRepository(
         val payload = JSONObject().put("tableId", draft.table.id)
             .put("guestCount", draft.guestCount).put("startsAt", draft.startsAt.toString())
         return try {
-            val response = request("/reservations", payload, authenticated = true, key = idempotencyKey)
+            val response = request("/reservations", payload, authenticated = true, key = idempotencyKey, typedCreate = true)
             decode { CreateReservationResult.Confirmed(JSONObject(response.body).reservation()) }
         } catch (failure: ResponseError) {
             CreateReservationResult.Failure.entries.firstOrNull { it.name == failure.code }
@@ -86,6 +116,7 @@ internal class HttpBookingRepository(
         body: JSONObject? = null,
         authenticated: Boolean = false,
         key: String? = null,
+        typedCreate: Boolean = false,
     ): HttpReply {
         val access = if (authenticated) sessions.access() ?: throw BookingException(BookingError.SESSION_EXPIRED) else null
         var reply = execute(path, body, access?.token, key)
@@ -99,13 +130,18 @@ internal class HttpBookingRepository(
         }
         if (reply.status in 200..299) return reply
         val code = runCatching { JSONObject(reply.body).getString("code") }.getOrNull()
-        if (key != null && reply.status in 400..499 && code != null) throw ResponseError(code)
+        if (typedCreate && reply.status in 400..499 && code != null) throw ResponseError(code)
         throw BookingException(
             when {
                 reply.status == 401 -> BookingError.SESSION_EXPIRED
+                reply.status == 403 -> BookingError.FORBIDDEN
+                code == "GUEST_NOT_FOUND" -> BookingError.GUEST_NOT_FOUND
                 reply.status == 404 -> BookingError.NOT_FOUND
                 code == "INVALID_START_TIME" -> BookingError.INVALID_START
                 code == "RESERVATION_CANNOT_CANCEL" -> BookingError.CANNOT_CANCEL
+                code == "TABLE_UNAVAILABLE" -> BookingError.CONFLICT
+                code == "STALE_RESERVATION" -> BookingError.STALE_RESERVATION
+                reply.status in 400..499 -> BookingError.INVALID_REQUEST
                 else -> BookingError.CONNECTION
             },
         )

@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-internal data class AuthOperation(val busy: Boolean = false, val error: AuthFailure? = null)
+data class AuthOperation(val busy: Boolean = false, val error: AuthFailure? = null)
 
 internal class AuthViewModel(private val repository: SessionRepository) : ViewModel() {
     val session = repository.state

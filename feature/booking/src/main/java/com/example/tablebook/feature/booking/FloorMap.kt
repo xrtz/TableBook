@@ -51,6 +51,19 @@ import kotlin.math.sin
 
 @Composable
 fun FloorMap(plan: FloorPlan, available: Set<Long>, guests: Int, selection: Long?, enabled: Boolean, select: (FloorTable) -> Unit) {
+    FloorMapContent(plan, available, guests, selection, enabled, admin = false, select)
+}
+
+@Composable
+fun AdminFloorMap(plan: FloorPlan, selection: Long?, enabled: Boolean, select: (FloorTable) -> Unit) {
+    FloorMapContent(plan, emptySet(), 0, selection, enabled, admin = true, select)
+}
+
+@Composable
+private fun FloorMapContent(
+    plan: FloorPlan, available: Set<Long>, guests: Int, selection: Long?, enabled: Boolean,
+    admin: Boolean, select: (FloorTable) -> Unit,
+) {
     var scale by remember(plan) { mutableFloatStateOf(1f) }
     var translation by remember(plan) { mutableStateOf(Offset.Zero) }
     val frame = RoundedCornerShape(20.dp)
@@ -99,7 +112,7 @@ fun FloorMap(plan: FloorPlan, available: Set<Long>, guests: Int, selection: Long
             for (table in plan.tables) {
                 val diameter = (unit * table.size.toFloat()).coerceAtLeast(48.dp)
                 TableTile(
-                    table, table.table.id in available, table.table.id == selection, guests, enabled,
+                    table, table.table.id in available, table.table.id == selection, guests, enabled, admin,
                     Modifier.offset(unit * table.x.toFloat() - diameter / 2, unit * table.y.toFloat() - diameter / 2).size(diameter),
                 ) { select(table) }
             }
@@ -114,11 +127,13 @@ fun FloorMap(plan: FloorPlan, available: Set<Long>, guests: Int, selection: Long
 }
 
 @Composable
-private fun TableTile(table: FloorTable, available: Boolean, selected: Boolean, guests: Int, enabled: Boolean, modifier: Modifier, select: () -> Unit) {
+private fun TableTile(table: FloorTable, available: Boolean, selected: Boolean, guests: Int, enabled: Boolean,
+    admin: Boolean, modifier: Modifier, select: () -> Unit) {
     val palette = MaterialTheme.colorScheme
     val canFit = guests <= table.table.capacity
     val state = when {
         selected -> R.string.booking_table_selected
+        admin -> R.string.admin_filter_table
         !canFit -> R.string.booking_wrong_capacity
         available -> R.string.booking_table_free
         else -> R.string.booking_table_unavailable
@@ -145,7 +160,7 @@ private fun TableTile(table: FloorTable, available: Boolean, selected: Boolean, 
             .semantics {
                 contentDescription = label
                 stateDescription = description
-            }.clickable(enabled = enabled && available, role = Role.Button, onClick = select),
+            }.clickable(enabled = enabled && (admin || available), role = Role.Button, onClick = select),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(Modifier.fillMaxSize()) {

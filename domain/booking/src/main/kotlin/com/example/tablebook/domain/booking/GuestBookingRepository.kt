@@ -16,7 +16,7 @@ data class FloorTable(
     val size: Int,
 )
 
-data class FloorPlan(val width: Int, val height: Int, val tables: List<FloorTable>)
+data class FloorPlan(val width: Int, val height: Int, val tables: List<FloorTable>, val serverTime: Instant)
 
 enum class ReservationStatus { CONFIRMED, SEATED, COMPLETED, CANCELLED }
 
@@ -28,7 +28,10 @@ data class OwnedReservation(
     val status: ReservationStatus,
 )
 
-enum class BookingError { INVALID_START, CANNOT_CANCEL, NOT_FOUND, SESSION_EXPIRED, CONNECTION }
+enum class BookingError {
+    INVALID_START, CANNOT_CANCEL, NOT_FOUND, SESSION_EXPIRED, CONNECTION,
+    FORBIDDEN, CONFLICT, STALE_RESERVATION, GUEST_NOT_FOUND, INVALID_REQUEST,
+}
 
 class BookingException(val error: BookingError, cause: Throwable? = null) : Exception(cause)
 

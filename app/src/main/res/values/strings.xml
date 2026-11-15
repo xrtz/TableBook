@@ -15,4 +15,5 @@
     <string name="auth_expired">Сессия истекла. Войдите снова</string>
     <string name="auth_connection_error">Не удалось выполнить запрос. Попробуйте ещё раз</string>
     <string name="auth_retry">Повторить</string>
+    <string name="account_checking">Проверяем аккаунт</string>
 </resources>

@@ -72,8 +72,13 @@ fun BookingScreen(model: BookingViewModel, logoutBusy: Boolean, logoutError: Boo
                 else state.bookingError?.message() ?: state.creationFailure?.message()
             error?.let {
                 Text(stringResource(it), color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = model::refresh, enabled = !busy && !state.loading) {
-                    Text(stringResource(R.string.booking_refresh))
+                val past = !state.showReservations && (state.bookingError == BookingError.INVALID_START ||
+                    state.creationFailure == CreateReservationResult.Failure.INVALID_START_TIME)
+                TextButton(
+                    onClick = if (past) model::chooseNextTime else model::refresh,
+                    enabled = !busy && !state.loading,
+                ) {
+                    Text(stringResource(if (past) R.string.booking_next_time else R.string.booking_refresh))
                 }
             }
             if (state.showReservations) {
@@ -266,12 +271,17 @@ private enum class Picker { DATE, TIME }
 private val dateFormat get() = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 private val timeFormat get() = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
 
-private fun BookingError.message(): Int = when (this) {
+fun BookingError.message(): Int = when (this) {
     BookingError.INVALID_START -> R.string.booking_invalid_start
     BookingError.CANNOT_CANCEL -> R.string.booking_cannot_cancel
     BookingError.NOT_FOUND -> R.string.booking_not_found
     BookingError.SESSION_EXPIRED -> R.string.booking_session_expired
     BookingError.CONNECTION -> R.string.booking_connection
+    BookingError.FORBIDDEN -> R.string.admin_forbidden
+    BookingError.CONFLICT -> R.string.booking_conflict
+    BookingError.STALE_RESERVATION -> R.string.admin_stale
+    BookingError.GUEST_NOT_FOUND -> R.string.admin_guest_missing
+    BookingError.INVALID_REQUEST -> R.string.booking_invalid_request
 }
 
 private fun CreateReservationResult.Failure.message(): Int = when (this) {
@@ -283,7 +293,7 @@ private fun CreateReservationResult.Failure.message(): Int = when (this) {
     else -> R.string.booking_invalid_request
 }
 
-private fun ReservationStatus.message(): Int = when (this) {
+fun ReservationStatus.message(): Int = when (this) {
     ReservationStatus.CONFIRMED -> R.string.booking_status_confirmed
     ReservationStatus.SEATED -> R.string.booking_status_seated
     ReservationStatus.COMPLETED -> R.string.booking_status_completed
