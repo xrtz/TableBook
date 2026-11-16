@@ -7,15 +7,16 @@ import com.example.tablebook.domain.booking.BookingError
 import com.example.tablebook.domain.booking.BookingException
 import com.example.tablebook.domain.booking.ConfirmedReservation
 import com.example.tablebook.domain.booking.CreateReservationResult
+import com.example.tablebook.domain.booking.CreateReservationUseCase
 import com.example.tablebook.domain.booking.FloorPlan
 import com.example.tablebook.domain.booking.FloorTable
 import com.example.tablebook.domain.booking.GuestBookingRepository
 import com.example.tablebook.domain.booking.Hall
+import com.example.tablebook.domain.booking.LoadBookingPlanUseCase
 import com.example.tablebook.domain.booking.OwnedReservation
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -43,7 +44,11 @@ data class BookingState(
 
 private data class Submission(val tableId: Long, val startsAt: Instant, val guestCount: Int)
 
-class BookingViewModel(private val repository: GuestBookingRepository) : ViewModel() {
+class BookingViewModel(
+    private val repository: GuestBookingRepository,
+    private val loadBookingPlan: LoadBookingPlanUseCase,
+    private val createReservation: CreateReservationUseCase,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(BookingState())
     val state = mutableState.asStateFlow()
     private val submissions = mutableMapOf<Submission, String>()
@@ -102,6 +107,11 @@ class BookingViewModel(private val repository: GuestBookingRepository) : ViewMod
 
     fun refresh() = load(clearErrors = true)
 
+    fun onBookingChanged() {
+        val state = mutableState.value
+        if (!state.working) load(clearErrors = false)
+    }
+
     fun chooseNextTime() = load(clearErrors = true, resetTime = true)
 
     private fun load(clearErrors: Boolean, resetTime: Boolean = false) {
@@ -128,21 +138,21 @@ class BookingViewModel(private val repository: GuestBookingRepository) : ViewMod
                         mutableState.update { it.copy(halls = halls, loading = false) }
                         return@launch
                     }
-                    val plan = if (resetTime) repository.floorPlan(hall.id)
-                        else snapshot.plan ?: repository.floorPlan(hall.id)
+                    val availability = loadBookingPlan(
+                        hall,
+                        cachedPlan = snapshot.plan.takeUnless { resetTime },
+                        startsAt = snapshot.start.takeUnless { resetTime || it == Instant.EPOCH },
+                        guestCount = snapshot.guests,
+                    )
                     ensureActive()
-                    val start = if (resetTime || snapshot.start == Instant.EPOCH) {
-                        plan.serverTime.atZone(hall.zone).truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant()
-                    } else snapshot.start
                     mutableState.update {
                         it.copy(
-                            halls = halls, hall = hall, plan = plan, start = start,
+                            halls = halls, hall = availability.hall, plan = availability.plan, start = availability.startsAt,
+                            available = availability.availableTables, loading = false,
+                            bookingError = availability.error ?: it.bookingError,
                             selected = if (resetTime) null else it.selected,
                         )
                     }
-                    val free = repository.availability(hall.id, start, snapshot.guests)
-                    ensureActive()
-                    mutableState.update { it.copy(available = free, loading = false) }
                 }
             } catch (error: BookingException) {
                 ensureActive()
@@ -154,14 +164,16 @@ class BookingViewModel(private val repository: GuestBookingRepository) : ViewMod
     fun confirm() {
         val current = mutableState.value
         val table = current.selected ?: return
+        val serverTime = current.plan?.serverTime ?: return
         if (current.working || current.loading) return
         val draft = BookingDraft(table.table, current.guests, current.start)
         val submission = Submission(table.table.id, draft.startsAt, draft.guestCount)
-        if (table.table.id !in current.available && submission !in submissions) return
+        val retry = submission in submissions
+        if (table.table.id !in current.available && !retry) return
         val key = submissions.getOrPut(submission) { UUID.randomUUID().toString() }
         mutableState.update { it.copy(working = true, creationFailure = null) }
         writeJob = viewModelScope.launch {
-            val result = repository.createReservation(draft, key)
+            val result = createReservation(draft, key, serverTime, retry)
             ensureActive()
             when (result) {
                 is CreateReservationResult.Confirmed -> {

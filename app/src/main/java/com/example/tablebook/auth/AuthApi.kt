@@ -8,7 +8,11 @@ import kotlinx.coroutines.withContext
 import org.json.JSONException
 import org.json.JSONObject
 
-internal data class SessionTokens(val accessToken: String, val refreshToken: String)
+internal data class SessionTokens(
+    val accessToken: String,
+    val refreshToken: String,
+    val scope: String = java.util.UUID.randomUUID().toString(),
+)
 
 enum class AuthFailure {
     INVALID_CREDENTIALS, INVALID_REGISTRATION, EMAIL_TAKEN, EXPIRED, CONNECTION,

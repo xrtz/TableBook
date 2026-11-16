@@ -30,7 +30,12 @@ internal class KeystoreSessionStorage(context: Context) : SessionStorage {
         val cipher = Cipher.getInstance(transformation)
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, encrypted, 0, ivSize))
         val json = JSONObject(cipher.doFinal(encrypted, ivSize, encrypted.size - ivSize).toString(Charsets.UTF_8))
-        SessionTokens(json.getString("accessToken"), json.getString("refreshToken"))
+        val tokens = SessionTokens(json.getString("accessToken"), json.getString("refreshToken"))
+        val scope = json.optString("scope")
+        if (scope.isEmpty()) {
+            write(tokens)
+            tokens
+        } else tokens.copy(scope = scope)
     } catch (_: FileNotFoundException) {
         null
     } catch (_: GeneralSecurityException) {
@@ -47,6 +52,7 @@ internal class KeystoreSessionStorage(context: Context) : SessionStorage {
         val json = JSONObject()
             .put("accessToken", tokens.accessToken)
             .put("refreshToken", tokens.refreshToken)
+            .put("scope", tokens.scope)
         val encrypted = cipher.iv + cipher.doFinal(json.toString().toByteArray(Charsets.UTF_8))
         val stream = file.startWrite()
         try {

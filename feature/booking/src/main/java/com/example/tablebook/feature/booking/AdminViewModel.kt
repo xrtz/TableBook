@@ -7,8 +7,11 @@ import com.example.tablebook.domain.booking.AdminReservation
 import com.example.tablebook.domain.booking.BookingDraft
 import com.example.tablebook.domain.booking.BookingError
 import com.example.tablebook.domain.booking.BookingException
+import com.example.tablebook.domain.booking.ChangeReservationStatusUseCase
+import com.example.tablebook.domain.booking.CreateReservationForGuestUseCase
 import com.example.tablebook.domain.booking.FloorPlan
 import com.example.tablebook.domain.booking.Hall
+import com.example.tablebook.domain.booking.MoveReservationUseCase
 import com.example.tablebook.domain.booking.ReservationStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -34,7 +37,12 @@ data class AdminState(
     val error: BookingError? = null,
 )
 
-class AdminViewModel(private val repository: AdminBookingRepository) : ViewModel() {
+class AdminViewModel(
+    private val repository: AdminBookingRepository,
+    private val createForGuest: CreateReservationForGuestUseCase,
+    private val moveReservation: MoveReservationUseCase,
+    private val changeReservationStatus: ChangeReservationStatusUseCase,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(AdminState())
     val state = mutableState.asStateFlow()
     private var job: Job? = null
@@ -48,6 +56,10 @@ class AdminViewModel(private val repository: AdminBookingRepository) : ViewModel
 
     fun refresh() {
         if (!mutableState.value.saving) load()
+    }
+
+    fun onBookingChanged() {
+        if (!mutableState.value.saving) load(keepError = true)
     }
 
     fun chooseHall(hall: Hall) = update { it.copy(hall = hall, plan = null, tableId = null, journal = emptyList()) }
@@ -91,26 +103,33 @@ class AdminViewModel(private val repository: AdminBookingRepository) : ViewModel
     }
 
     fun status(entry: AdminReservation, target: ReservationStatus) = mutate {
-        repository.changeStatus(entry.reservation.id, entry.reservation.version, target)
+        changeReservationStatus(entry, target)
     }
 
     fun schedule(entry: AdminReservation?, email: String, tableId: Long, guests: Int?, local: String) {
         val snapshot = mutableState.value
         val hall = snapshot.hall ?: return
-        val table = snapshot.plan?.tables?.firstOrNull { it.table.id == tableId }?.table ?: return
+        val plan = snapshot.plan ?: return
+        val table = plan.tables.firstOrNull { it.table.id == tableId }?.table ?: return
         val time = runCatching { LocalDateTime.parse(local).atZone(hall.zone).toInstant() }.getOrNull()
-        if (time == null || (entry == null && (guests == null || guests < 1 || email.isBlank()))) {
+        if (time == null || (entry == null && guests == null)) {
             mutableState.update { it.copy(error = BookingError.INVALID_REQUEST) }
             return
         }
         mutate {
             if (entry != null) {
-                repository.move(entry.reservation.id, entry.reservation.version, tableId, time)
+                moveReservation(entry, table, time, plan.serverTime)
             } else {
                 val draft = BookingDraft(table, requireNotNull(guests), time)
-                val request = email.trim() to draft
+                val request = email.trim().lowercase() to draft
+                val retry = request in createKeys
                 val key = createKeys.getOrPut(request) { UUID.randomUUID().toString() }
-                repository.createForGuest(request.first, draft, key)
+                try {
+                    createForGuest(request.first, draft, key, plan.serverTime, retry)
+                } catch (error: BookingException) {
+                    if (error.error != BookingError.CONNECTION) createKeys.remove(request)
+                    throw error
+                }
                 createKeys.remove(request)
             }
         }

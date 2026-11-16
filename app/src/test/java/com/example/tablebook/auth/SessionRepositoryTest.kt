@@ -45,7 +45,7 @@ class SessionRepositoryTest {
         assertEquals(updated.accessToken, first.await())
         assertEquals(updated.accessToken, second.await())
         assertEquals(1, calls)
-        assertEquals(updated, storage.tokens)
+        assertEquals(updated.copy(scope = initial.scope), storage.tokens)
 
         repository.logout()
         repository.signIn("guest@example.test", "example long passphrase", register = false)

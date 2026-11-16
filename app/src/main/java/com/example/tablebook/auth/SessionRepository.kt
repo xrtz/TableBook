@@ -9,9 +9,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class SessionState { LOADING, SIGNED_OUT, SIGNED_IN }
-internal data class SessionAccess(val token: String, val generation: Long)
+internal data class SessionAccess(val token: String, val generation: Long, val scope: String)
 
-internal class SessionRepository(private val api: AuthApi, private val storage: SessionStorage) {
+internal class SessionRepository(
+    private val api: AuthApi,
+    private val storage: SessionStorage,
+    private val sessionEnded: (String) -> Unit = {},
+) {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(SessionState.LOADING)
     val state = mutableState.asStateFlow()
@@ -31,7 +35,13 @@ internal class SessionRepository(private val api: AuthApi, private val storage: 
     }
 
     suspend fun access(): SessionAccess? = mutex.withLock {
-        tokens?.let { SessionAccess(it.accessToken, generation) }
+        tokens?.let { SessionAccess(it.accessToken, generation, it.scope) }
+    }
+
+    suspend fun inScope(scope: String, action: () -> Unit): Boolean = mutex.withLock {
+        if (tokens?.scope != scope) return@withLock false
+        action()
+        true
     }
 
     // Call after a 401 with the session access used by the failed request.
@@ -42,7 +52,7 @@ internal class SessionRepository(private val api: AuthApi, private val storage: 
         withContext(NonCancellable) {
             try {
                 val refreshed = api.refresh(current.refreshToken)
-                persist(refreshed)
+                persist(refreshed.copy(scope = current.scope))
                 refreshed.accessToken
             } catch (error: AuthException) {
                 if (error.failure != AuthFailure.EXPIRED) throw error
@@ -70,9 +80,11 @@ internal class SessionRepository(private val api: AuthApi, private val storage: 
     private suspend fun clear() {
         withContext(NonCancellable) {
             withContext(Dispatchers.IO) { storage.clear() }
+            val scope = tokens?.scope
             tokens = null
             generation++
             publish()
+            scope?.let(sessionEnded)
         }
     }
 

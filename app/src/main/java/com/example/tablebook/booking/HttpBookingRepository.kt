@@ -23,15 +23,20 @@ import java.net.URI
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.json.JSONArray
 import org.json.JSONObject
 
 internal class HttpBookingRepository(
     private val url: String,
     private val sessions: SessionRepository,
+    private val bookingChanged: (String) -> Unit = {},
 ) : GuestBookingRepository, AdminBookingRepository {
     override suspend fun accountIsAdmin(): Boolean = decode {
         JSONObject(request("/auth/me", authenticated = true).body).getString("role") == "admin"
@@ -61,8 +66,8 @@ internal class HttpBookingRepository(
         request("/admin/reservations/$id/status", body, authenticated = true)
     }
     override suspend fun halls(): List<Hall> = decode {
-        request("/halls").body.objects().map {
-            Hall(it.getLong("id"), it.getString("name"), ZoneId.of(it.getString("timeZone")))
+        get<List<HallDto>>("/halls").map {
+            Hall(it.id, it.name, ZoneId.of(it.timeZone))
         }
     }
 
@@ -79,17 +84,24 @@ internal class HttpBookingRepository(
     }
 
     override suspend fun availability(hallId: Long, startsAt: Instant, guestCount: Int): Set<Long> = decode {
-        request("/halls/$hallId/availability?startsAt=$startsAt&guestCount=$guestCount").body.objects()
-            .filter { it.getBoolean("available") }.map { it.getLong("tableId") }.toSet()
+        get<List<AvailabilityDto>>("/halls/$hallId/availability?startsAt=$startsAt&guestCount=$guestCount")
+            .filter { it.available }.map { it.tableId }.toSet()
     }
 
-    override suspend fun myReservations(): List<OwnedReservation> = decode {
-        request("/reservations", authenticated = true).body.objects().map {
+    override suspend fun myReservations(): List<OwnedReservation> = readReservations().reservations
+
+    suspend fun readReservations(expectedScope: String? = null): ReservationSnapshot = decode {
+        val reply = request("/reservations", authenticated = true, expectedScope = expectedScope)
+        val reservations = reply.body.objects().map {
             OwnedReservation(
                 it.reservation(), it.getString("tableLabel"), it.getString("hallName"),
                 ZoneId.of(it.getString("timeZone")), ReservationStatus.valueOf(it.getString("status").uppercase(Locale.ROOT)),
             )
         }
+        ReservationSnapshot(
+            reservations,
+            reply.date?.let { ZonedDateTime.parse(it, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant() },
+        )
     }
 
     override suspend fun cancelReservation(id: Long) {
@@ -117,8 +129,10 @@ internal class HttpBookingRepository(
         authenticated: Boolean = false,
         key: String? = null,
         typedCreate: Boolean = false,
+        expectedScope: String? = null,
     ): HttpReply {
         val access = if (authenticated) sessions.access() ?: throw BookingException(BookingError.SESSION_EXPIRED) else null
+        if (expectedScope != null && access?.scope != expectedScope) throw BookingException(BookingError.SESSION_EXPIRED)
         var reply = execute(path, body, access?.token, key)
         if (reply.status == 401 && access != null) {
             val token = try {
@@ -128,7 +142,12 @@ internal class HttpBookingRepository(
             } ?: throw BookingException(BookingError.SESSION_EXPIRED)
             reply = execute(path, body, token, key)
         }
-        if (reply.status in 200..299) return reply
+        if (reply.status in 200..299) {
+            if (access != null && body != null && !path.startsWith("/admin/")) {
+                sessions.inScope(access.scope) { bookingChanged(access.scope) }
+            }
+            return reply
+        }
         val code = runCatching { JSONObject(reply.body).getString("code") }.getOrNull()
         if (typedCreate && reply.status in 400..499 && code != null) throw ResponseError(code)
         throw BookingException(
@@ -167,7 +186,8 @@ internal class HttpBookingRepository(
                     }
                     val status = connection.responseCode
                     val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-                    HttpReply(status, stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty())
+                    HttpReply(status, stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty(),
+                        connection.getHeaderField("Date"))
                 } finally {
                     connection.disconnect()
                 }
@@ -186,6 +206,9 @@ internal class HttpBookingRepository(
         throw BookingException(BookingError.CONNECTION, error)
     }
 
+    private suspend inline fun <reified T> get(path: String): T =
+        bookingJson.decodeFromString<T>(request(path).body)
+
     private fun JSONObject.reservation() = ConfirmedReservation(
         getLong("id"), getLong("tableId"), getInt("guestCount"), Instant.parse(getString("startsAt")),
         Instant.parse(getString("endsAt")), getLong("version"),
@@ -194,6 +217,16 @@ internal class HttpBookingRepository(
     private fun String.objects() = JSONArray(this).objects()
     private fun JSONArray.objects() = List(length()) { getJSONObject(it) }
 
-    private data class HttpReply(val status: Int, val body: String)
+    private data class HttpReply(val status: Int, val body: String, val date: String?)
     private class ResponseError(val code: String) : Exception()
 }
+
+private val bookingJson = Json { ignoreUnknownKeys = true }
+
+@Serializable
+private data class HallDto(val id: Long, val name: String, val timeZone: String)
+
+@Serializable
+private data class AvailabilityDto(val tableId: Long, val available: Boolean)
+
+internal data class ReservationSnapshot(val reservations: List<OwnedReservation>, val serverTime: Instant?)

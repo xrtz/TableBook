@@ -16,4 +16,7 @@
     <string name="auth_connection_error">Не удалось выполнить запрос. Попробуйте ещё раз</string>
     <string name="auth_retry">Повторить</string>
     <string name="account_checking">Проверяем аккаунт</string>
+    <string name="reminder_channel">Напоминания о бронях</string>
+    <string name="reminder_title">Скоро ваша бронь</string>
+    <string name="reminder_details">%1$s · стол %2$s · %3$s</string>
 </resources>
